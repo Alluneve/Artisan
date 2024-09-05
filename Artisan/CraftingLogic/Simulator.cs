@@ -106,7 +106,9 @@ public static class Simulator
 
     public unsafe static string SimulatorResult(Recipe recipe, RecipeConfig config, CraftState craft, out Vector4 hintColor)
     {
+        hintColor = ImGuiColors.DalamudWhite;
         var solver = CraftingProcessor.GetSolverForRecipe(config, craft).CreateSolver(craft);
+        if (solver == null) return "No valid solver found.";
         var rd = RecipeNoteRecipeData.Ptr();
         var re = rd != null ? rd->FindRecipeById(recipe.RowId) : null;
         var startingQuality = re != null ? Calculations.GetStartingQuality(recipe, re->GetAssignedHQIngredients()) : 0;
@@ -418,12 +420,12 @@ public static class Simulator
 
     public static bool WillFinishCraft(CraftState craft, StepState step, Skills action) => step.FinalAppraisalLeft == 0 && step.Progress + CalculateProgress(craft, step, action) >= craft.CraftProgress;
 
-    public static Skills NextTouchCombo(StepState step) => step.PrevComboAction switch
+    public static Skills NextTouchCombo(StepState step, CraftState craft)
     {
-        Skills.BasicTouch => Skills.StandardTouch,
-        Skills.StandardTouch => Skills.AdvancedTouch,
-        _ => Skills.BasicTouch
-    };
+        if (step.PrevComboAction == Skills.BasicTouch && craft.StatLevel >= MinLevel(Skills.StandardTouch)) return Skills.StandardTouch;
+        if (step.PrevComboAction == Skills.StandardTouch && craft.StatLevel >= MinLevel(Skills.AdvancedTouch)) return Skills.AdvancedTouch;
+        return Skills.BasicTouch;
+    }
 
     public static Condition GetNextCondition(CraftState craft, StepState step, float roll) => step.Condition switch
     {

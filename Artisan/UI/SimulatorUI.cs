@@ -12,6 +12,7 @@ using ECommons;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.ImGuiMethods;
+using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using ImGuiNET;
 using Lumina.Excel.GeneratedSheets;
@@ -714,6 +715,7 @@ namespace Artisan.UI
             _selectedCraft = Crafting.BuildCraftStateForRecipe(SimStats, Job.CRP + SelectedRecipe.CraftType.Row, SelectedRecipe);
             foreach (var opt in CraftingProcessor.GetAvailableSolversForRecipe(_selectedCraft, false))
             {
+                if (opt == default) continue;
                 bool selected = ImGui.Selectable(opt.Name);
                 if (selected)
                 {
@@ -845,6 +847,7 @@ namespace Artisan.UI
                     CP = gsStats.CP + cpBoost,
                     Specialist = gsStats.Specialist,
                     Splendorous = gsStats.Splendorous,
+                    Manipulation = gsStats.Manipulation
                 };
 
                 ResolveSteps();

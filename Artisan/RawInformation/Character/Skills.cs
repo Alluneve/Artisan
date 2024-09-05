@@ -8,6 +8,7 @@ namespace Artisan.RawInformation.Character
     public enum Skills
     {
         None = 0,
+        TouchCombo = 1,
 
         BasicSynthesis = 100001, // 120p progress, 10dur cost
         CarefulSynthesis = 100203, // 180p progress, 7cp + 10 dur cost
@@ -58,13 +59,13 @@ namespace Artisan.RawInformation.Character
         public static Skills ActionToSkill(uint actionId) => _actionToSkill.GetValueOrDefault(actionId);
 
         public static int Level(this Skills skill) => skill.ActionId(Job.CRP) >= 100000 ? LuminaSheets.CraftActions[skill.ActionId(Job.CRP)].ClassJobLevel : LuminaSheets.ActionSheet[skill.ActionId(Job.CRP)].ClassJobLevel;
-        public static uint ActionId(this Skills skill, Job job) => job is >= Job.CRP and <= Job.CUL ? _skillToAction[Array.IndexOf(Enum.GetValues(typeof(Skills)), skill), job - Job.CRP] : 0;
+        public static uint ActionId(this Skills skill, Job job) => job is >= Job.CRP and <= Job.CUL ? _skillToAction[Math.Max(Array.IndexOf(Enum.GetValues(typeof(Skills)), skill), (int)Skills.None), job - Job.CRP] : 0;
 
         static SkillActionMap()
         {
             foreach (Skills skill in (Skills[])Enum.GetValues(typeof(Skills)))
             {
-                if (skill == Skills.None) continue;
+                if (skill == Skills.None || skill == Skills.TouchCombo) continue;
                 AssignActionIDs(skill);
             }
         }

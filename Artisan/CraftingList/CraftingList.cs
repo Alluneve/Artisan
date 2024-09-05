@@ -8,6 +8,7 @@ using Dalamud.Game.Text.SeStringHandling.Payloads;
 using ECommons;
 using ECommons.Automation;
 using ECommons.Automation.LegacyTaskManager;
+using ECommons.Automation.UIInput;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
 using ECommons.Logging;
@@ -15,14 +16,12 @@ using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game.UI;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
-using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.GeneratedSheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using static ECommons.GenericHelpers;
-using ECommons.Automation.UIInput;
 
 namespace Artisan.CraftingLists
 {
@@ -198,7 +197,19 @@ namespace Artisan.CraftingLists
 
             if (CurrentIndex < selectedList.ExpandedList.Count)
             {
-                CraftingListUI.CurrentProcessedItem = selectedList.ExpandedList[CurrentIndex];
+                if (CraftingListUI.CurrentProcessedItem != selectedList.ExpandedList[CurrentIndex])
+                {
+                    CraftingListUI.CurrentProcessedItem = selectedList.ExpandedList[CurrentIndex];
+                    CraftingListUI.CurrentProcessedItemCount = 1;
+                    CraftingListUI.CurrentProcessedItemIndex = CurrentIndex;
+                    CraftingListUI.CurrentProcessedItemListCount = selectedList.ExpandedList.Count(v => v == CraftingListUI.CurrentProcessedItem);
+
+                }
+                else if (CraftingListUI.CurrentProcessedItemIndex != CurrentIndex)
+                {
+                    CraftingListUI.CurrentProcessedItemIndex = CurrentIndex;
+                    CraftingListUI.CurrentProcessedItemCount++;
+                }
             }
             else
             {
@@ -345,17 +356,22 @@ namespace Artisan.CraftingLists
             {
                 selectedList.Recipes.First(x => x.ID == CraftingListUI.CurrentProcessedItem).ListItemOptions = new ListItemOptions();
             }
-            bool needConsumables = (type == PreCrafting.CraftType.Normal || (type == PreCrafting.CraftType.Quick && P.Config.UseConsumablesQuickSynth)) && (!ConsumableChecker.IsFooded(config) || !ConsumableChecker.IsPotted(config) || !ConsumableChecker.IsManualled(config) || !ConsumableChecker.IsSquadronManualled(config));
-            bool hasConsumables = config != default ? ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && ConsumableChecker.HasItem(config.RequiredManual, false) && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) : true;
+            bool needConsumables = PreCrafting.NeedsConsumablesCheck(type, config);
+            bool hasConsumables = PreCrafting.HasConsumablesCheck(config);
 
             if (P.Config.AbortIfNoFoodPot && needConsumables && !hasConsumables)
             {
-                DuoLog.Error($"Can't craft {recipe.ItemResult.Value?.Name}: required consumables not up");
-                Paused = true;
+                PreCrafting.MissingConsumablesMessage(recipe, config);
+                Paused = false;
                 return;
             }
 
-            if (needConsumables && hasConsumables)
+            bool needFood = config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
+            bool needPot = config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
+            bool needManual = config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
+            bool needSquadronManual = config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
+
+            if (needFood || needPot || needManual || needSquadronManual)
             {
                 if (!CLTM.IsBusy && !PreCrafting.Occupied())
                 {
@@ -482,12 +498,12 @@ namespace Artisan.CraftingLists
                             {
                                 for (int m = 0; m <= 100; m++)
                                 {
-                                   new AddonMaster.RecipeNote((IntPtr)addon).Material(i, false);
+                                    new AddonMaster.RecipeNote((IntPtr)addon).Material(i, false);
                                 }
 
                                 for (int m = 0; m <= 100; m++)
                                 {
-                                   new AddonMaster.RecipeNote((IntPtr)addon).Material(i, true);
+                                    new AddonMaster.RecipeNote((IntPtr)addon).Material(i, true);
                                 }
                             }
 

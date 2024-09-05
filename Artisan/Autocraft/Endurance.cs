@@ -367,17 +367,22 @@ namespace Artisan.Autocraft
 
                 var config = P.Config.RecipeConfigs.GetValueOrDefault(RecipeID) ?? new();
                 PreCrafting.CraftType type = P.Config.QuickSynthMode && recipe.CanQuickSynth && P.ri.HasRecipeCrafted(recipe.RowId) ? PreCrafting.CraftType.Quick : PreCrafting.CraftType.Normal;
-                bool needConsumables = (type == PreCrafting.CraftType.Normal || (type == PreCrafting.CraftType.Quick && P.Config.UseConsumablesQuickSynth)) && (!ConsumableChecker.IsFooded(config) || !ConsumableChecker.IsPotted(config) || !ConsumableChecker.IsManualled(config) || !ConsumableChecker.IsSquadronManualled(config));
-                bool hasConsumables = config != default ? ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && ConsumableChecker.HasItem(config.RequiredManual, false) && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) : true;
+                bool needConsumables = PreCrafting.NeedsConsumablesCheck(type, config);
+                bool hasConsumables = PreCrafting.HasConsumablesCheck(config);
 
                 if (P.Config.AbortIfNoFoodPot && needConsumables && !hasConsumables)
                 {
-                    DuoLog.Error($"Can't craft {recipe.ItemResult.Value?.Name}: required consumables not up");
+                    PreCrafting.MissingConsumablesMessage(recipe, config);
                     Enable = false;
                     return;
                 }
 
-                if (needConsumables && hasConsumables)
+                bool needFood = config != default && ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config);
+                bool needPot = config != default && ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config);
+                bool needManual = config != default && ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config);
+                bool needSquadronManual = config != default && ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config);
+
+                if (needFood || needPot || needManual || needSquadronManual)
                 {
                     if (!P.TM.IsBusy && !PreCrafting.Occupied())
                     {
@@ -410,7 +415,7 @@ namespace Artisan.Autocraft
                                 P.TM.Enqueue(() => CraftingListFunctions.SetIngredients(SetIngredients), "EnduranceSetIngredientsLayout");
 
                             P.TM.Enqueue(() => Operations.RepeatActualCraft(), "EnduranceNormalStart");
-                            P.TM.Enqueue(() => Crafting.CurState is Crafting.State.WaitStart, 5000, "EnduranceNormalWaitStart");
+                            P.TM.Enqueue(() => Crafting.CurState is Crafting.State.WaitStart, 1500, "EnduranceNormalWaitStart");
                         }
                     }
 
