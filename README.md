@@ -1,4 +1,15 @@
 <!-- Repository Header Begin -->
+
+<h3>Q&A</h3>
+<ul>
+  <li> The only thing this fork does is make this shit work on staging in dalamud</li>
+  <li>… there are many like this</li>
+  <li>No, it isn't officially supported</li>
+  <li>No, I won't support it either</li>
+  <li>No, I won't provide Dalamud manifest file</li>
+  <li>this is private and for private use only, I won't provide ya nuthing</li>
+</ul>
+
 <div align="center">
 <img src="https://love.puni.sh/resources/artisan.svg" alt="Artisan IconUrl" width="15%">
 <br>
