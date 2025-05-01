@@ -13,7 +13,9 @@ using ECommons.ImGuiMethods;
 using ECommons.Reflection;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using global::Artisan.CraftingLogic;
+using global::Artisan.CraftingLogic.Solvers;
 using global::Artisan.GameInterop;
+using global::Artisan.RawInformation.Character;
 using global::Artisan.UI.Tables;
 using ImGuiNET;
 using IPC;
@@ -1282,13 +1284,21 @@ internal class ListEditor : Window, IDisposable
         }
 
         var stats = CharacterStats.GetBaseStatsForClassHeuristic(Job.CRP + recipe.CraftType.RowId);
-        stats.AddConsumables(new(config.RequiredFood, config.RequiredFoodHQ), new(config.RequiredPotion, config.RequiredPotionHQ));
+        stats.AddConsumables(new(config.RequiredFood, config.RequiredFoodHQ), new(config.RequiredPotion, config.RequiredPotionHQ), CharacterInfo.FCCraftsmanshipbuff);
         var craft = Crafting.BuildCraftStateForRecipe(stats, Job.CRP + recipe.CraftType.RowId, recipe);
         if (config.DrawSolver(craft))
         {
             P.Config.RecipeConfigs[selectedListItem] = config;
             P.Config.Save();
+            config.TempConfigs.Clear();
         }
+        
+        ImGuiEx.TextV("Requirements:");
+        ImGui.SameLine();
+        using var style = ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0, ImGui.GetStyle().ItemSpacing.Y));
+        ImGui.SameLine(137.6f.Scale());
+        ImGui.TextWrapped($"Difficulty: {craft.CraftProgress} | Durability: {craft.CraftDurability} | Quality: {(craft.CraftCollectible ? craft.CraftQualityMin3 : craft.CraftQualityMax)}");
+        ImGuiComponents.HelpMarker($"Shows the crafting requirements: Progress needed to complete the craft, how much Durability the recipe has, and Quality target required to reach the highest Quality level (In case of a Collectible). Use this information to select an appropriate macro, if desired.");
 
         ImGui.Checkbox($"Assume Max Starting Quality (for simulator)", ref hqSim);
 

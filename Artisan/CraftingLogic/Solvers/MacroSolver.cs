@@ -25,7 +25,7 @@ public class MacroSolverDefinition : ISolverDefinition
     public Solver Create(CraftState craft, int flavour) => new MacroSolver(P.Config.MacroSolverConfig.FindMacro(flavour) ?? new(), craft);
 }
 
-public class MacroSolver : Solver
+public class MacroSolver : Solver, ICraftValidator
 {
     private MacroSolverSettings.Macro _macro;
     private Solver? _fallback;
@@ -128,8 +128,19 @@ public class MacroSolver : Solver
     }
 
     private static bool ActionIsQuality(Skills skill) => skill is Skills.BasicTouch or Skills.StandardTouch or Skills.AdvancedTouch or Skills.HastyTouch or Skills.PreparatoryTouch
-        or Skills.PreciseTouch or Skills.PrudentTouch or Skills.TrainedFinesse or Skills.ByregotsBlessing or Skills.GreatStrides or Skills.Innovation;
+        or Skills.PreciseTouch or Skills.PrudentTouch or Skills.TrainedFinesse or Skills.ByregotsBlessing or Skills.GreatStrides or Skills.Innovation or Skills.TouchCombo or Skills.TouchComboRefined;
 
     private static bool ActionIsUpgradeableQuality(Skills skill) => skill is Skills.HastyTouch or Skills.PreparatoryTouch or Skills.AdvancedTouch or Skills.StandardTouch or Skills.BasicTouch;
     private static bool ActionIsUpgradeableProgress(Skills skill) => skill is Skills.Groundwork or Skills.PrudentSynthesis or Skills.CarefulSynthesis or Skills.BasicSynthesis;
+
+    public bool Validate(CraftState craft)
+    {
+        if(_macro.Options.ExactCraftsmanship != 0)
+        {
+            return _macro.Options.ExactCraftsmanship == craft.StatCraftsmanship && _macro.Options.MinControl <= craft.StatControl && _macro.Options.MinCP <= craft.StatCP;
+        }
+
+
+        return _macro.Options.MinCraftsmanship <= craft.StatCraftsmanship && _macro.Options.MinControl <= craft.StatControl && _macro.Options.MinCP <= craft.StatCP;
+    }
 }

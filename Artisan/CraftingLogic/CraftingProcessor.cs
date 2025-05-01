@@ -40,6 +40,7 @@ public static class CraftingProcessor
         _solverDefs.Add(new ExpertSolverDefinition());
         _solverDefs.Add(new MacroSolverDefinition());
         _solverDefs.Add(new ScriptSolverDefinition());
+        _solverDefs.Add(new RaphaelSolverDefintion());
 
         Crafting.CraftStarted += OnCraftStarted;
         Crafting.CraftAdvanced += OnCraftAdvanced;
@@ -125,6 +126,19 @@ public static class CraftingProcessor
             }
             _activeSolver = autoSolver.CreateSolver(craft);
             ActiveSolver = new(autoSolver.Name, _activeSolver);
+        }
+
+        if (_activeSolver is ICraftValidator validator)
+        {
+            Svc.Log.Information("Validation");
+            var validation = validator.Validate(craft);
+            if (!validation)
+            {
+                SolverFailed?.Invoke(recipe, "You have mismatched stats");
+                _activeSolver = null;
+                ActiveSolver = new("");
+                return;
+            }
         }
 
         SolverStarted?.Invoke(recipe, ActiveSolver, craft, initialStep);

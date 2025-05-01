@@ -1,4 +1,5 @@
 ﻿using Artisan.RawInformation.Character;
+using ECommons;
 using ECommons.DalamudServices;
 using Lumina.Excel.Sheets;
 using System;
@@ -150,12 +151,12 @@ namespace Artisan.RawInformation
 
     public static class SheetExtensions
     {
-        public static string NameOfAction(this Skills skill)
+        public static string NameOfAction(this Skills skill, bool raphParseEn = false)
         {
             if (skill == Skills.TouchCombo) return "Touch Combo";
             if (skill == Skills.TouchComboRefined) return "Touch Combo (Refined Touch Route)";
             var id = skill.ActionId(ECommons.ExcelServices.Job.CRP);
-            return id == 0 ? "Artisan Recommendation" : id < 100000 ? LuminaSheets.ActionSheet[id].Name.ToString() : LuminaSheets.CraftActions[id].Name.ToString();
+            return id == 0 ? "Artisan Recommendation" : id < 100000 ? Svc.Data.GetExcelSheet<Action>(raphParseEn ? Dalamud.Game.ClientLanguage.English : Svc.ClientState.ClientLanguage)[id].Name.ToString() : Svc.Data.GetExcelSheet<CraftAction>(raphParseEn ? Dalamud.Game.ClientLanguage.English : Svc.ClientState.ClientLanguage)[id].Name.ToString();
         }
 
         public static ushort IconOfAction(this Skills skill, ECommons.ExcelServices.Job job)
@@ -222,6 +223,36 @@ namespace Artisan.RawInformation
             }
             return "";
 
+        }
+
+        public static bool MissionHasMaterialMiracle(this Recipe recipe)
+        {
+            try
+            {
+
+                Svc.Data.GameData.Options.PanicOnSheetChecksumMismatch = false;
+                var id = recipe.RowId;
+                //First, find the MissionRecipe with our recipe
+                var missionRec = Svc.Data.GetExcelSheet<WKSMissionRecipe>().FirstOrNull(x => x.Unknown0 == id || x.Unknown1 == id || x.Unknown2 == id || x.Unknown3 == id || x.Unknown4 == id);
+
+                //Bail if there's no MissionRecipe (this isn't a Cosmic Craft)
+                if (missionRec is null)
+                    return false;
+
+                //Next, find the MissionUnit that has our MissionRecipe row
+                var missionUnit = Svc.Data.GetExcelSheet<WKSMissionUnit>().First(x => x.Unknown12 == missionRec?.RowId);
+
+                //Get the MissionToDo from the MissionUnit
+                var missionToDo = Svc.Data.GetExcelSheet<WKSMissionToDo>().GetRow(missionUnit.Unknown7);
+
+                //Svc.Log.Debug($"{id} -> {missionRec.RowId} -> {missionUnit.RowId} -> {missionToDo.RowId} -> {missionToDo.Unknown0}");
+                return missionToDo.Unknown0 == (uint)Skills.MaterialMiracle;
+            }
+            catch (Exception e)
+            {
+                Svc.Log.Error($"Error in MissionHasMaterialMiracle: {e}");
+                return false;
+            }
         }
     }
 }

@@ -13,7 +13,7 @@ public record class CraftState
     public int StatLevel;
     public bool UnlockedManipulation;
     public bool Specialist;
-    public bool Splendorous;
+    public bool SplendorCosmic;
 
     // recipe stats
     public bool CraftHQ;
@@ -37,6 +37,13 @@ public record class CraftState
     public float[] CraftConditionProbabilities = { }; // TODO: this assumes that new condition does not depend on prev - this is what my preliminary findings suggest (except for forced transitions)
     public byte CollectableMetadataKey;
     public bool IsCosmic;
+    public ConditionFlags ConditionFlags;
+    public bool MissionHasMaterialMiracle;
+
+    public uint ItemId;
+    public uint RecipeId;
+
+    public Lumina.Excel.Sheets.Recipe Recipe;
 
     public static float[] NormalCraftConditionProbabilities(int statLevel) => [1, statLevel >= 63 ? 0.25f : 0.2f, 0.04f];
     public static float[] EWRelicT1CraftConditionProbabilities() => [1, 0.03f, 0, 0, 0.12f, 0.12f, 0.12f, 0, 0, 0.12f];
@@ -70,6 +77,8 @@ public record class StepState
     public bool TrainedPerfectionAvailable;
     public bool TrainedPerfectionActive;
     public Skills PrevComboAction;
+    public uint MaterialMiracleCharges;
+    public bool MaterialMiracleActive;
 
     public override string ToString() => $"#{Index} {Condition}: {Progress}/{Quality}/{Durability}/{RemainingCP}; {BuffsString()}; Prev={PrevComboAction}{(PrevActionFailed ? " (failed)" : "")}";
 
@@ -92,6 +101,7 @@ public record class StepState
             sb.Append($", FA={FinalAppraisalLeft}");
         sb.Append($", CO={CarefulObservationLeft}, HS={(HeartAndSoulActive ? "active" : HeartAndSoulAvailable ? "avail" : "none")}");
         sb.Append($", QuickInno:{QuickInnoAvailable}/{QuickInnoLeft}/{InnovationLeft}");
+        sb.Append($", MaterialMiracleActive:{MaterialMiracleActive} / {MaterialMiracleCharges}");
         return sb.ToString();
     }
 }

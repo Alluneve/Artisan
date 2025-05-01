@@ -22,6 +22,7 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Client.UI.Misc;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using ImGuiNET;
+using Lumina;
 using Lumina.Excel.Sheets;
 using System;
 using System.Linq;
@@ -164,6 +165,8 @@ namespace Artisan.UI
                     ImGui.Text($"Current Rec: {CraftingProcessor.NextRec.Action.NameOfAction()}");
                     ImGui.Text($"Previous Action: {Crafting.CurStep.PrevComboAction.NameOfAction()}");
                     ImGui.Text($"Can insta delicate: {Crafting.CurStep.Index == 1 && StandardSolver.CanFinishCraft(Crafting.CurCraft, Crafting.CurStep, Skills.DelicateSynthesis) && StandardSolver.CalculateNewQuality(Crafting.CurCraft, Crafting.CurStep, Skills.DelicateSynthesis) >= Crafting.CurCraft.CraftQualityMin3}");
+                    ImGui.Text($"Flags: {Crafting.CurCraft.ConditionFlags}");
+                    ImGui.Text($"Material Miracle Charges: {Crafting.CurStep.MaterialMiracleCharges}");
                 }
 
                 if (ImGui.CollapsingHeader("Spiritbonds"))
@@ -273,7 +276,7 @@ namespace Artisan.UI
 
                 if (ImGui.CollapsingHeader("Gear"))
                 {
-                    ImGui.TextUnformatted($"In-game stats: {CharacterInfo.Craftsmanship}/{CharacterInfo.Control}/{CharacterInfo.MaxCP}");
+                    ImGui.TextUnformatted($"In-game stats: {CharacterInfo.Craftsmanship}/{CharacterInfo.Control}/{CharacterInfo.MaxCP}/{CharacterInfo.FCCraftsmanshipbuff}");
                     DrawEquippedGear();
                     foreach (ref var gs in RaptureGearsetModule.Instance()->Entries)
                         DrawGearset(ref gs);
@@ -306,6 +309,10 @@ namespace Artisan.UI
                 if (ImGui.Button($"Open Endurance Item"))
                 {
                     CraftingListFunctions.OpenRecipeByID(Endurance.RecipeID);
+                }
+                if (ImGui.Button($"Craft X IPC"))
+                {
+                    IPC.IPC.CraftX((ushort)DebugValue, 1);
                 }
 
                 ImGui.InputInt("Debug Value", ref DebugValue);
@@ -450,7 +457,7 @@ namespace Artisan.UI
                 return;
 
             var stats = CharacterStats.GetBaseStatsEquipped();
-            ImGui.TextUnformatted($"Total stats: {stats.Craftsmanship}/{stats.Control}/{stats.CP}/{stats.Splendorous}/{stats.Specialist}");
+            ImGui.TextUnformatted($"Total stats: {stats.Craftsmanship}/{stats.Control}/{stats.CP}/{stats.SplendorCosmic}/{stats.Specialist}");
 
             var inventory = InventoryManager.Instance()->GetInventoryContainer(InventoryType.EquippedItems);
             if (inventory == null)
@@ -466,6 +473,7 @@ namespace Artisan.UI
                 using var n = ImRaii.TreeNode($"{i}: {item->ItemId} '{details.Data.Value.Name}' ({item->Flags}): crs={details.Stats[0].Base}+{details.Stats[0].Melded}/{details.Stats[0].Max}, ctrl={details.Stats[1].Base}+{details.Stats[1].Melded}/{details.Stats[1].Max}, cp={details.Stats[2].Base}+{details.Stats[2].Melded}/{details.Stats[2].Max}");
                 if (n)
                 {
+                    ImGui.Text($"{details.Data.Value.LevelEquip} {details.Data.Value.Rarity}");
                     for (int j = 0; j < 5; ++j)
                     {
                         using var m = ImRaii.TreeNode($"Materia {j}: {item->Materia[j]} {item->MateriaGrades[j]}", ImGuiTreeNodeFlags.Leaf);
@@ -486,7 +494,7 @@ namespace Artisan.UI
                     return;
 
                 var stats = CharacterStats.GetBaseStatsGearset(ref gs);
-                ImGui.TextUnformatted($"Total stats: {stats.Craftsmanship}/{stats.Control}/{stats.CP}/{stats.Splendorous}/{stats.Specialist}");
+                ImGui.TextUnformatted($"Total stats: {stats.Craftsmanship}/{stats.Control}/{stats.CP}/{stats.SplendorCosmic}/{stats.Specialist}");
 
                 for (int i = 0; i < gs.Items.Length; ++i)
                 {

@@ -1,11 +1,14 @@
 ﻿using Artisan.Autocraft;
 using Artisan.CraftingLogic;
+using Artisan.CraftingLogic.CraftData;
 using Artisan.GameInterop.CSExt;
+using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Hooking;
 using ECommons.DalamudServices;
 using ECommons.ExcelServices;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
@@ -83,13 +86,16 @@ public static unsafe class Crafting
         var lt = recipe.Number == 0 && stats.Level < 100 ? Svc.Data.GetExcelSheet<RecipeLevelTable>().First(x => x.ClassJobLevel == stats.Level) : recipe.RecipeLevelTable.Value;
         var res = new CraftState()
         {
+            ItemId = recipe.ItemResult.RowId,
+            RecipeId = recipe.RowId, // for future cli update
+            Recipe = recipe,
             StatCraftsmanship = stats.Craftsmanship,
             StatControl = stats.Control,
             StatCP = stats.CP,
             StatLevel = stats.Level,
             UnlockedManipulation = stats.Manipulation,
             Specialist = stats.Specialist,
-            Splendorous = stats.Splendorous,
+            SplendorCosmic = stats.SplendorCosmic,
             CraftCollectible = recipe.ItemResult.Value.AlwaysCollectable,
             CraftExpert = recipe.IsExpert,
             CraftLevel = lt.ClassJobLevel,
@@ -104,7 +110,9 @@ public static unsafe class Crafting
             CraftRecommendedCraftsmanship = lt.SuggestedCraftsmanship,
             CraftHQ = recipe.CanHq,
             CollectableMetadataKey = recipe.CollectableMetadataKey,
-            IsCosmic = recipe.Number == 0
+            IsCosmic = recipe.Number == 0,
+            ConditionFlags = (ConditionFlags)lt.ConditionsFlag,
+            MissionHasMaterialMiracle = recipe.MissionHasMaterialMiracle()
         };
 
         if (res.CraftCollectible)
@@ -476,6 +484,7 @@ public static unsafe class Crafting
     {
         if (QuickSynthState == state)
             return;
+
         QuickSynthState = state;
         Svc.Log.Debug($"Quick-synth progress update: {QuickSynthState} {Environment.TickCount64}");
         QuickSynthProgress?.Invoke(QuickSynthState.Cur, QuickSynthState.Max);
@@ -486,6 +495,21 @@ public static unsafe class Crafting
     private static int GetStepQuality(AddonSynthesis* synthWindow) => synthWindow->AtkUnitBase.AtkValues[9].Int;
     private static int GetStepDurability(AddonSynthesis* synthWindow) => synthWindow->AtkUnitBase.AtkValues[7].Int;
     private static Condition GetStepCondition(AddonSynthesis* synthWindow) => (Condition)synthWindow->AtkUnitBase.AtkValues[12].Int;
+    private unsafe static uint MaterialMiracleCharges()
+    {
+        try
+        {
+            if (DutyActionManager.GetInstanceIfReady() != null)
+                return (uint)(DutyActionManager.GetInstanceIfReady()->CurCharges[1] + DutyActionManager.GetInstanceIfReady()->CurCharges[0]);
+
+            return 0;
+        }
+        catch (Exception e)
+        {
+            ECommons.GenericHelpers.Log(e);
+            return 0;
+        }
+    }
 
     private static StepState BuildStepState(AddonSynthesis* synthWindow, StepState? predictedStep, CraftState craft)
     {
@@ -514,6 +538,8 @@ public static unsafe class Crafting
         ret.ExpedienceLeft = GetStatus(Buffs.Expedience)?.Param ?? 0;
         ret.PrevActionFailed = predictedStep?.PrevActionFailed ?? false;
         ret.PrevComboAction = predictedStep?.PrevComboAction ?? Skills.None;
+        ret.MaterialMiracleCharges = MaterialMiracleCharges();
+        ret.MaterialMiracleActive = GetStatus(Buffs.MaterialMiracle) != null;
 
         return ret;
     }
@@ -591,7 +617,7 @@ public static unsafe class Crafting
                 var advancePayload = (CraftingEventHandler.AdvanceStep*)payload;
                 bool complete = advancePayload->Flags.HasFlag(CraftingEventHandler.StepFlags.CompleteSuccess) || advancePayload->Flags.HasFlag(CraftingEventHandler.StepFlags.CompleteFail);
                 Svc.Log.Debug($"AdvanceActionComplete: {complete}");
-                _predictedNextStep = Simulator.Execute(CurCraft!, CurStep!, SkillActionMap.ActionToSkill(advancePayload->LastActionId), advancePayload->Flags.HasFlag(CraftingEventHandler.StepFlags.LastActionSucceeded) ? 0 : 1, 1).Item2;
+                _predictedNextStep = Simulator.Execute(CurCraft!, CurStep!, advancePayload->LastActionId == (uint)Skills.MaterialMiracle ? Skills.MaterialMiracle : SkillActionMap.ActionToSkill(advancePayload->LastActionId), advancePayload->Flags.HasFlag(CraftingEventHandler.StepFlags.LastActionSucceeded) ? 0 : 1, 1).Item2;
                 _predictedNextStep.Condition = (Condition)(advancePayload->ConditionPlus1 - 1);
                 // fix up predicted state to match what game sends
                 if (complete)
@@ -610,7 +636,7 @@ public static unsafe class Crafting
                     Svc.Log.Error($"Prediction error: expected durability {advancePayload->CurDurability}, got {_predictedNextStep.Durability}");
                 var predictedDeltaProgress = _predictedNextStep.PrevActionFailed ? 0 : Simulator.CalculateProgress(CurCraft!, CurStep!, _predictedNextStep.PrevComboAction);
                 var predictedDeltaQuality = _predictedNextStep.PrevActionFailed ? 0 : Simulator.CalculateQuality(CurCraft!, CurStep!, _predictedNextStep.PrevComboAction);
-                var predictedDeltaDurability = _predictedNextStep.PrevComboAction == Skills.MastersMend ? 30 : -Simulator.GetDurabilityCost(CurStep!, _predictedNextStep.PrevComboAction);
+                var predictedDeltaDurability = _predictedNextStep.PrevComboAction == Skills.MastersMend ? 30 : _predictedNextStep.PrevComboAction == Skills.ImmaculateMend ? 100 : -Simulator.GetDurabilityCost(CurStep!, _predictedNextStep.PrevComboAction);
                 if (predictedDeltaProgress != advancePayload->DeltaProgress)
                     Svc.Log.Error($"Prediction error: expected progress delta {advancePayload->DeltaProgress}, got {predictedDeltaProgress}");
                 if (predictedDeltaQuality != advancePayload->DeltaQuality)

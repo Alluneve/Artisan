@@ -1,18 +1,18 @@
-﻿using Artisan.RawInformation.Character;
-using Dalamud.Interface.Components;
+﻿using Artisan.CraftingLogic;
+using Artisan.CraftingLogic.Solvers;
+using Artisan.GameInterop;
+using Artisan.RawInformation;
+using Artisan.RawInformation.Character;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Windowing;
 using ECommons.ImGuiMethods;
 using ECommons.Logging;
 using ImGuiNET;
+using Newtonsoft.Json;
 using System;
 using System.Linq;
 using System.Numerics;
-using Artisan.RawInformation;
-using Newtonsoft.Json;
-using Artisan.CraftingLogic.Solvers;
-using Artisan.GameInterop;
-using Artisan.CraftingLogic;
 
 namespace Artisan.UI
 {
@@ -24,9 +24,11 @@ namespace Artisan.UI
         private int selectedStepIndex = -1;
         private bool Raweditor = false;
         private static string _rawMacro = string.Empty;
+        private bool raphael_cache = false;
 
-        public MacroEditor(MacroSolverSettings.Macro macro) : base($"Macro Editor###{macro.ID}", ImGuiWindowFlags.None)
+        public MacroEditor(MacroSolverSettings.Macro macro, bool raphael_cache = false) : base($"Macro Editor###{macro.ID}", ImGuiWindowFlags.None)
         {
+            this.raphael_cache = raphael_cache;
             SelectedMacro = macro;
             selectedStepIndex = macro.Steps.Count - 1;
             this.IsOpen = true;
@@ -91,10 +93,22 @@ namespace Artisan.UI
                 }
                 if (ImGui.Button("Delete Macro (Hold Ctrl)") && ImGui.GetIO().KeyCtrl)
                 {
-                    P.Config.MacroSolverConfig.Macros.Remove(SelectedMacro);
-                    foreach (var e in P.Config.RecipeConfigs)
-                        if (e.Value.SolverType == typeof(MacroSolverDefinition).FullName && e.Value.SolverFlavour == SelectedMacro.ID)
-                            P.Config.RecipeConfigs.Remove(e.Key); // TODO: do we want to preserve other configs?..
+                    if (raphael_cache)
+                    {
+                        var copy = P.Config.RaphaelSolverCacheV2.Where(kv => kv.Value == SelectedMacro);
+                        //really should be just one but is it for sure??
+                        foreach (var kv in copy)
+                        {
+                            P.Config.RaphaelSolverCacheV2.TryRemove(kv);
+                        }
+                    }
+                    else
+                    {
+                        P.Config.MacroSolverConfig.Macros.Remove(SelectedMacro);
+                        foreach (var e in P.Config.RecipeConfigs)
+                            if (e.Value.SolverType == typeof(MacroSolverDefinition).FullName && e.Value.SolverFlavour == SelectedMacro.ID)
+                                P.Config.RecipeConfigs.Remove(e.Key); // TODO: do we want to preserve other configs?..
+                    }
                     P.Config.Save();
                     SelectedMacro = new();
                     selectedStepIndex = -1;
@@ -173,7 +187,7 @@ namespace Artisan.UI
                             P.Config.Save();
                         }
                     }
-                    
+
 
                     ImGui.Columns(2, "actionColumns", true);
                     ImGui.SetColumnWidth(0, 220f.Scale());
@@ -182,7 +196,7 @@ namespace Artisan.UI
                     for (int i = 0; i < SelectedMacro.Steps.Count; i++)
                     {
                         var step = SelectedMacro.Steps[i];
-                        var selectedAction = ImGui.Selectable($"{i + 1}. {(step.Action == Skills.None ? "Artisan Recommendation" : step.Action.NameOfAction())}{(step.HasExcludeCondition? " | ":"")}{(step.HasExcludeCondition&&step.ReplaceOnExclude?step.ReplacementAction.NameOfAction() : step.HasExcludeCondition?"Skip":"")}###selectedAction{i}", i == selectedStepIndex);
+                        var selectedAction = ImGui.Selectable($"{i + 1}. {(step.Action == Skills.None ? "Artisan Recommendation" : step.Action.NameOfAction())}{(step.HasExcludeCondition ? " | " : "")}{(step.HasExcludeCondition && step.ReplaceOnExclude ? step.ReplacementAction.NameOfAction() : step.HasExcludeCondition ? "Skip" : "")}###selectedAction{i}", i == selectedStepIndex);
                         if (selectedAction)
                             selectedStepIndex = i;
                     }
@@ -219,7 +233,7 @@ namespace Artisan.UI
                         ImGui.Spacing();
                         ImGuiEx.CenterColumnText($"Skip on these conditions", true);
 
-                        ImGui.BeginChild("ConditionalExcludes", new Vector2(ImGui.GetContentRegionAvail().X, step.HasExcludeCondition?200f:100f), false, ImGuiWindowFlags.AlwaysAutoResize);
+                        ImGui.BeginChild("ConditionalExcludes", new Vector2(ImGui.GetContentRegionAvail().X, step.HasExcludeCondition ? 200f : 100f), false, ImGuiWindowFlags.AlwaysAutoResize);
                         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(0, 0));
                         ImGui.Columns(3, null, false);
                         if (ImGui.Checkbox($"Normal", ref step.ExcludeNormal))
@@ -288,7 +302,7 @@ namespace Artisan.UI
 
                                     ImGui.Separator();
 
-                                    foreach (var opt in Enum.GetValues(typeof(Skills)).Cast<Skills>().OrderBy(SheetExtensions.NameOfAction))
+                                    foreach (var opt in Enum.GetValues(typeof(Skills)).Cast<Skills>().OrderBy(y => y.NameOfAction()))
                                     {
                                         if (ImGui.Selectable(opt.NameOfAction()))
                                         {
@@ -339,7 +353,7 @@ namespace Artisan.UI
 
                             ImGui.Separator();
 
-                            foreach (var opt in Enum.GetValues(typeof(Skills)).Cast<Skills>().OrderBy(SheetExtensions.NameOfAction))
+                            foreach (var opt in Enum.GetValues(typeof(Skills)).Cast<Skills>().OrderBy(y => y.NameOfAction()))
                             {
                                 if (ImGui.Selectable(opt.NameOfAction()))
                                 {
@@ -393,7 +407,7 @@ namespace Artisan.UI
                         var steps = MacroUI.ParseMacro(_rawMacro);
                         if (steps.Count > 0 && !SelectedMacro.Steps.SequenceEqual(steps))
                         {
-                            selectedStepIndex=steps.Count-1;
+                            selectedStepIndex = steps.Count - 1;
                             SelectedMacro.Steps = steps;
                             P.Config.Save();
                             DuoLog.Information($"Macro Updated");
@@ -405,7 +419,7 @@ namespace Artisan.UI
                         var steps = MacroUI.ParseMacro(_rawMacro);
                         if (steps.Count > 0 && !SelectedMacro.Steps.SequenceEqual(steps))
                         {
-                            selectedStepIndex=steps.Count-1;
+                            selectedStepIndex = steps.Count - 1;
                             SelectedMacro.Steps = steps;
                             P.Config.Save();
                             DuoLog.Information($"Macro Updated");
