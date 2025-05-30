@@ -31,35 +31,42 @@ namespace Artisan.CraftingLogic
         {
             switch (id)
             {
-                case Skills.TouchCombo:
-                case Skills.TouchComboRefined:
                 case Skills.BasicSynthesis:
-                case Skills.RapidSynthesis:
+                case Skills.BasicTouch:
+                case Skills.MastersMend:
+                case Skills.Observe:
+                case Skills.TricksOfTrade:
+                case Skills.StandardTouch:
+                case Skills.ByregotsBlessing:
+                case Skills.PreciseTouch:
                 case Skills.MuscleMemory:
                 case Skills.CarefulSynthesis:
-                case Skills.Groundwork:
-                case Skills.DelicateSynthesis:
-                case Skills.IntensiveSynthesis:
-                case Skills.PrudentSynthesis:
-                case Skills.BasicTouch:
-                case Skills.HastyTouch:
-                case Skills.StandardTouch:
-                case Skills.PreciseTouch:
                 case Skills.PrudentTouch:
                 case Skills.Reflect:
                 case Skills.PreparatoryTouch:
+                case Skills.Groundwork:
+                case Skills.DelicateSynthesis:
+                case Skills.IntensiveSynthesis:
                 case Skills.AdvancedTouch:
+                case Skills.HeartAndSoul:
+                case Skills.PrudentSynthesis:
                 case Skills.TrainedFinesse:
-                case Skills.ByregotsBlessing:
-                case Skills.MastersMend:
+                case Skills.RefinedTouch:
+                case Skills.ImmaculateMend:
+                case Skills.TrainedPerfection:
                 case Skills.TrainedEye:
+                case Skills.QuickInnovation:
+                case Skills.TouchCombo:
+                case Skills.TouchComboRefined:
+                case Skills.RapidSynthesis:
+                case Skills.HastyTouch:
                     return true;
                 default:
                     return false;
             };
         }
 
-        public static int GetStartingQuality(Recipe recipe, int[] hqCount)
+        public static int GetStartingQuality(Recipe recipe, int[] hqCount, RecipeLevelTable? lt = null)
         {
             var itemSheet = Svc.Data.GetExcelSheet<Item>();
             long sumLevelHQ = 0, sumLevel = 0, idx = 0;
@@ -78,7 +85,7 @@ namespace Artisan.CraftingLogic
                 sumLevelHQ += ilvl * Math.Clamp(numHQ, 0, i.Amount);
 
             }
-            var left = (sumLevelHQ * RecipeMaxQuality(recipe) * recipe.MaterialQualityFactor / 100);
+            var left = (sumLevelHQ * (lt is null ? RecipeMaxQuality(recipe) : RecipeMaxQuality(recipe, lt.Value)) * recipe.MaterialQualityFactor / 100);
             var right = (sumLevel);
             return (int)(sumLevel == 0 ? 0 : left / right);
         }

@@ -26,6 +26,7 @@ public static unsafe class Crafting
     public enum State
     {
         IdleNormal, // we're not crafting - the default state of the game
+        Exiting, // standing up from IdleBetween to IdleNormal
         IdleBetween, // we've finished a craft and have not yet started another, sitting in the menu
         WaitStart, // we're waiting for a new (quick) craft to start
         InProgress, // crafting is in progress, waiting for next action
@@ -42,6 +43,8 @@ public static unsafe class Crafting
     public static CraftState? CurCraft { get; private set; }
     public static StepState? CurStep { get; private set; }
     public static bool IsTrial { get; private set; }
+
+    public static int InitialQuality;
 
     public static bool CanCancelQS = false;
 
@@ -99,7 +102,7 @@ public static unsafe class Crafting
             CraftCollectible = recipe.ItemResult.Value.AlwaysCollectable,
             CraftExpert = recipe.IsExpert,
             CraftLevel = lt.ClassJobLevel,
-            CraftDurability = recipe.Number == 0 ? Calculations.RecipeDurability(recipe, lt) : Calculations.RecipeDurability(recipe),
+            CraftDurability = Calculations.RecipeDurability(recipe),
             CraftProgress = recipe.Number == 0 ? Calculations.RecipeDifficulty(recipe, lt) : Calculations.RecipeDifficulty(recipe),
             CraftProgressDivider = lt.ProgressDivider,
             CraftProgressModifier = lt.ProgressModifier,
@@ -112,7 +115,8 @@ public static unsafe class Crafting
             CollectableMetadataKey = recipe.CollectableMetadataKey,
             IsCosmic = recipe.Number == 0,
             ConditionFlags = (ConditionFlags)lt.ConditionsFlag,
-            MissionHasMaterialMiracle = recipe.MissionHasMaterialMiracle()
+            MissionHasMaterialMiracle = recipe.MissionHasMaterialMiracle(),
+            LevelTable = lt
         };
 
         if (res.CraftCollectible)
@@ -212,29 +216,30 @@ public static unsafe class Crafting
         // typical craft loop looks like this:
         // 1. starting from IdleNormal state (no condition flags) or IdleBetween state (Crafting + PreparingToCraft condition flags)
         // 2. user presses 'craft' button
-        // 2a. craft-start animation starts - this is signified by Crafting40 condition flag, we transition to WaitStart state
+        // 2a. craft-start animation starts - this is signified by ExecutingCraftingAction condition flag, we transition to WaitStart state
         // 2b. quickly after that Crafting flag is set (if it was not already set before)
-        // 2c. some time later, animation ends - at this point synth addon is updated and Crafting40 condition flag is cleared - at this point we transition to InProgress state
+        // 2c. some time later, animation ends - at this point synth addon is updated and ExecutingCraftingAction condition flag is cleared - at this point we transition to InProgress state
         // 3. user executes an action that doesn't complete a craft
-        // 3a. client sets Crafting40 condition flag - we transition to WaitAction state
+        // 3a. client sets ExecutingCraftingAction condition flag - we transition to WaitAction state
         // 3b. a bit later client receives a bunch of packets: ActorControl (to start animation), StatusEffectList (containing previous statuses and new cp) and UpdateClassInfo (irrelevant)
         // 3c. a few seconds later client receives another bunch of packets: some misc ones, EventPlay64 (contains new crafting state - progress/quality/condition/etc), StatusEffectList (contains new statuses and new cp) and UpdateClassInfo (irrelevant)
-        // 3d. on the next frame after receiving EventPlay64, Crafting40 flag is cleared and player is unblocked
+        // 3d. on the next frame after receiving EventPlay64, ExecutingCraftingAction flag is cleared and player is unblocked
         // 3e. sometimes EventPlay64 and final StatusEffectList might end up in a different packet bundle and can get delayed for arbitrary time (and it won't be sent at all if there are no status updates) - we transition back to InProgress state only once statuses are updated
         // 4. user executes an action that completes a craft in any way (success or failure)
         // 4a-c - same as 3a-c
-        // 4d. same as 3d, however Crafting40 flag remains set and crafting finish animation starts playing
+        // 4d. same as 3d, however ExecutingCraftingAction flag remains set and crafting finish animation starts playing
         // 4e. as soon as we've got fully updated state, we transition to WaitFinish state
-        // 4f. some time later, finish animation ends - Crafting40 condition flag is cleared, PreparingToCraft flag is set - at this point we transition to IdleBetween state
+        // 4f. some time later, finish animation ends - ExecutingCraftingAction condition flag is cleared, PreparingToCraft flag is set - at this point we transition to IdleBetween state
         // 5. user exits crafting mode - condition flags are cleared, we transition to IdleNormal state
         // 6. if at some point during craft user cancels it
-        // 6a. client sets Crafting40 condition flag - we transition to WaitAction state
+        // 6a. client sets ExecutingCraftingAction condition flag - we transition to WaitAction state
         // 6b. soon after, addon disappears - we detect that and transition to WaitFinish state
         // 6c. next EventPlay64 contains abort message - we ignore it for now
         // since an action can complete a craft only if it increases progress or reduces durability, we can use that to determine when to transition from WaitAction to WaitFinish
         var newState = CurState switch
         {
             State.IdleNormal => TransitionFromIdleNormal(),
+            State.Exiting => TransitionFromExiting(),
             State.IdleBetween => TransitionFromIdleBetween(),
             State.WaitStart => TransitionFromWaitStart(),
             State.InProgress => TransitionFromInProgress(),
@@ -251,12 +256,31 @@ public static unsafe class Crafting
         }
     }
 
+    private static State TransitionFromExiting()
+    {
+        if (Svc.Condition[ConditionFlag.NormalConditions])
+            return State.IdleNormal;
+
+        if (CurCraft != null)
+        {
+            CraftFinished?.Invoke(CurRecipe!.Value, CurCraft, CurStep!, true);
+            _predictedNextStep = null;
+            _predictionDeadline = default;
+            CurRecipe = null;
+            CurCraft = null;
+            CurStep = null;
+            IsTrial = false;
+        }
+
+        return State.Exiting;
+    }
+
     private static State TransitionFromInvalid()
     {
         if (Svc.Condition[ConditionFlag.Crafting] && Svc.Condition[ConditionFlag.PreparingToCraft])
             return State.IdleBetween;
 
-        if (!Svc.Condition[ConditionFlag.Crafting40] && !Svc.Condition[ConditionFlag.Crafting] && !Svc.Condition[ConditionFlag.PreparingToCraft])
+        if (!Svc.Condition[ConditionFlag.ExecutingCraftingAction] && !Svc.Condition[ConditionFlag.Crafting] && !Svc.Condition[ConditionFlag.PreparingToCraft])
             return State.IdleNormal;
 
         // wrap up
@@ -271,10 +295,11 @@ public static unsafe class Crafting
 
     private static State TransitionFromIdleNormal()
     {
-        if (Svc.Condition[ConditionFlag.Crafting40])
-        {
+        if (Svc.Condition[ConditionFlag.NormalConditions])
+            return State.IdleNormal;
+
+        if (Svc.Condition[ConditionFlag.ExecutingCraftingAction])
             return State.WaitStart; // craft started, but we don't yet know details
-        }
 
         if (Svc.Condition[ConditionFlag.PreparingToCraft])
         {
@@ -288,15 +313,15 @@ public static unsafe class Crafting
 
     private static State TransitionFromIdleBetween()
     {
-        // note that Crafting40 remains set after exiting from quick-synth mode
+        // note that ExecutingCraftingAction remains set after exiting from quick-synth mode
         if (Svc.Condition[ConditionFlag.PreparingToCraft])
             return State.IdleBetween; // still in idle state
 
-        if (Svc.Condition[ConditionFlag.Crafting40])
+        if (Svc.Condition[ConditionFlag.ExecutingCraftingAction])
             return State.WaitStart; // craft started, but we don't yet know details
 
         // exit crafting menu
-        return State.IdleNormal;
+        return State.Exiting;
     }
 
     private static State TransitionFromWaitStart()
@@ -308,7 +333,7 @@ public static unsafe class Crafting
             return State.QuickCraft; // we've actually started quick synth
         }
 
-        if (Svc.Condition[ConditionFlag.Crafting40])
+        if (Svc.Condition[ConditionFlag.ExecutingCraftingAction])
             return State.WaitStart; // still waiting
 
         // note: addon is normally available on the same frame transition ends
@@ -330,19 +355,19 @@ public static unsafe class Crafting
 
         var canHQ = CurRecipe.Value.CanHq;
         CurCraft = BuildCraftStateForRecipe(CharacterStats.GetCurrentStats(), CharacterInfo.JobID, CurRecipe!.Value);
+        CurCraft?.InitialQuality = InitialQuality;
         CurStep = BuildStepState(synthWindow, null, CurCraft);
         if (CurStep.Index != 1 || CurStep.Condition != Condition.Normal || CurStep.PrevComboAction != Skills.None)
             Svc.Log.Error($"Unexpected initial state: {CurStep}");
 
         IsTrial = synthWindow->AtkUnitBase.AtkValues[1] is { Type: FFXIVClientStructs.FFXIV.Component.GUI.ValueType.Bool, Byte: 1 };
         CraftStarted?.Invoke(CurRecipe.Value, CurCraft, CurStep, IsTrial);
-        Svc.Log.Debug($"{CurCraft?.IsCosmic}");
         return State.InProgress;
     }
 
     private static State TransitionFromInProgress()
     {
-        if (!Svc.Condition[ConditionFlag.Crafting40])
+        if (!Svc.Condition[ConditionFlag.ExecutingCraftingAction])
             return State.InProgress; // when either action is executed or craft is cancelled, this condition flag will be set
         _predictedNextStep = null; // just in case, ensure it's cleared
         _predictionDeadline = default;
@@ -399,7 +424,7 @@ public static unsafe class Crafting
 
     private static State TransitionFromWaitFinish()
     {
-        if (Svc.Condition[ConditionFlag.Crafting40])
+        if (Svc.Condition[ConditionFlag.ExecutingCraftingAction])
             return State.WaitFinish; // transition still in progress
 
         Svc.Log.Debug($"Resetting");
@@ -448,7 +473,7 @@ public static unsafe class Crafting
     public static AtkUnitBase* GetCosmicAddon()
     {
         var cosmicAddon = (AtkUnitBase*)Svc.GameGui.GetAddonByName("WKSRecipeNotebook");
-        if (cosmicAddon == null)
+        if (cosmicAddon == null || !cosmicAddon->IsVisible || !cosmicAddon->IsReady)
             return null; // not ready
 
         return cosmicAddon;
@@ -495,6 +520,8 @@ public static unsafe class Crafting
     private static int GetStepQuality(AddonSynthesis* synthWindow) => synthWindow->AtkUnitBase.AtkValues[9].Int;
     private static int GetStepDurability(AddonSynthesis* synthWindow) => synthWindow->AtkUnitBase.AtkValues[7].Int;
     private static Condition GetStepCondition(AddonSynthesis* synthWindow) => (Condition)synthWindow->AtkUnitBase.AtkValues[12].Int;
+    public static int DelineationCount() => InventoryManager.Instance()->GetInventoryItemCount(28724);
+
     private unsafe static uint MaterialMiracleCharges()
     {
         try
@@ -507,6 +534,18 @@ public static unsafe class Crafting
         catch (Exception e)
         {
             ECommons.GenericHelpers.Log(e);
+            return 0;
+        }
+    }
+
+    private unsafe static int CarefulObservationCharges()
+    {
+        try
+        {
+            return (int)ActionManager.Instance()->GetCurrentCharges(100395);
+        }
+        catch
+        {
             return 0;
         }
     }
@@ -528,7 +567,7 @@ public static unsafe class Crafting
         ret.VenerationLeft = GetStatus(Buffs.Veneration)?.Param ?? 0;
         ret.MuscleMemoryLeft = GetStatus(Buffs.MuscleMemory)?.Param ?? 0;
         ret.FinalAppraisalLeft = GetStatus(Buffs.FinalAppraisal)?.Param ?? 0;
-        ret.CarefulObservationLeft = ActionManagerEx.CanUseSkill(Skills.CarefulObservation) ? 1 : 0;
+        ret.CarefulObservationLeft = predictedStep is null ? craft.Specialist && craft.StatLevel >= Skills.CarefulObservation.Level() ? Math.Min(3, DelineationCount()) : 0 : Math.Min(predictedStep.CarefulObservationLeft, DelineationCount()); //Charges based on delineations, best to just use the predicted state until a proper check can be discovered
         ret.HeartAndSoulActive = GetStatus(Buffs.HeartAndSoul) != null;
         ret.HeartAndSoulAvailable = ActionManagerEx.CanUseSkill(Skills.HeartAndSoul);
         ret.TrainedPerfectionActive = GetStatus(Buffs.TrainedPerfection) != null;
@@ -540,6 +579,7 @@ public static unsafe class Crafting
         ret.PrevComboAction = predictedStep?.PrevComboAction ?? Skills.None;
         ret.MaterialMiracleCharges = MaterialMiracleCharges();
         ret.MaterialMiracleActive = GetStatus(Buffs.MaterialMiracle) != null;
+        ret.ObserveCounter = predictedStep?.ObserveCounter ?? 0;
 
         return ret;
     }
@@ -553,7 +593,7 @@ public static unsafe class Crafting
         {
             case CraftingEventHandler.OperationId.StartPrepare:
                 // this is sent immediately upon starting (quick) synth and does nothing interesting other than resetting the state
-                // transition (Crafting40) is set slightly earlier by client when initiating the craft
+                // transition (ExecutingCraftingAction) is set slightly earlier by client when initiating the craft
                 // the actual crafting states (setting Crafting and clearing PreparingToCraft) set in response to this message
                 if (CurState is not State.WaitStart and not State.IdleBetween)
                     Svc.Log.Error($"Unexpected state {CurState} when receiving {*payload} message");
@@ -561,32 +601,34 @@ public static unsafe class Crafting
             case CraftingEventHandler.OperationId.StartInfo:
                 // this is sent few 100s of ms after StartPrepare for normal synth and contains details of the recipe
                 // client stores the information in payload in event handler, but we continue waiting
+                var startPayload = (CraftingEventHandler.StartInfo*)payload;
                 if (CurState != State.WaitStart)
                     Svc.Log.Error($"Unexpected state {CurState} when receiving {*payload} message");
-                var startPayload = (CraftingEventHandler.StartInfo*)payload;
                 Svc.Log.Debug($"Starting craft: recipe #{startPayload->RecipeId}, initial quality {startPayload->StartingQuality}, u8={startPayload->u8}");
                 if (CurRecipe != null)
                     Svc.Log.Error($"Unexpected non-null recipe when receiving {*payload} message");
                 CurRecipe = Svc.Data.GetExcelSheet<Lumina.Excel.Sheets.Recipe>()?.GetRow(startPayload->RecipeId);
                 if (CurRecipe == null)
                     Svc.Log.Error($"Failed to find recipe #{startPayload->RecipeId}");
+
+                InitialQuality = startPayload->StartingQuality;
                 // note: we could build CurCraft and CurStep here
                 break;
             case CraftingEventHandler.OperationId.StartReady:
                 // this is sent few 100s of ms after StartInfo for normal synth and instructs client to start synth session - set up addon, etc
-                // transition (Crafting40) will be cleared in a few frames
+                // transition (ExecutingCraftingAction) will be cleared in a few frames
                 if (CurState != State.WaitStart)
                     Svc.Log.Error($"Unexpected state {CurState} when receiving {*payload} message");
                 break;
             case CraftingEventHandler.OperationId.Finish:
                 // this is sent few seconds after last action that completed the craft or quick synth and instructs client to exit the finish transition
-                // transition (Crafting40) is cleared in response to this message
+                // transition (ExecutingCraftingAction) is cleared in response to this message
                 if (CurState is not State.WaitFinish and not State.IdleBetween)
                     Svc.Log.Error($"Unexpected state {CurState} when receiving {*payload} message");
                 break;
             case CraftingEventHandler.OperationId.Abort:
                 // this is sent immediately upon aborting synth
-                // transition (Crafting40) is set slightly earlier by client when aborting the craft
+                // transition (ExecutingCraftingAction) is set slightly earlier by client when aborting the craft
                 // actual craft state (Crafting) is cleared several seconds later
                 // currently we rely on addon disappearing to detect aborts (for robustness), it can happen either before or after Abort message
                 if (CurState is not State.WaitAction and not State.WaitFinish and not State.IdleBetween)
@@ -595,12 +637,14 @@ public static unsafe class Crafting
                     Svc.Log.Error($"Unexpected non-null predicted-next when receiving {*payload} message");
                 if (CurCraft is not null && CurCraft.IsCosmic && Endurance.Enable)
                     Endurance.ToggleEndurance(false);
+
+                CurState = State.Exiting;
                 break;
             case CraftingEventHandler.OperationId.AdvanceCraftAction:
             case CraftingEventHandler.OperationId.AdvanceNormalAction:
                 // this is sent a few seconds after using an action and contains action result
                 // in response to this action, client updates the addon data, prints log message and clears consumed statuses (mume, gs, etc)
-                // transition (Crafting40) will be cleared in a few frames, if this action did not complete the craft
+                // transition (ExecutingCraftingAction) will be cleared in a few frames, if this action did not complete the craft
                 // if there are any status changes (e.g. remaining step updates) and if craft is not complete, these will be updated by the next StatusEffectList packet, which might arrive with a delay
                 // because of that, we wait until statuses match prediction (or too much time passes) before transitioning to InProgress
                 if (CurState is not State.WaitAction or State.InProgress)

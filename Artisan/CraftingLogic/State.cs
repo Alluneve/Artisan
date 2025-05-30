@@ -39,11 +39,13 @@ public record class CraftState
     public bool IsCosmic;
     public ConditionFlags ConditionFlags;
     public bool MissionHasMaterialMiracle;
+    public int InitialQuality;
 
     public uint ItemId;
     public uint RecipeId;
 
     public Lumina.Excel.Sheets.Recipe Recipe;
+    public Lumina.Excel.Sheets.RecipeLevelTable LevelTable;
 
     public static float[] NormalCraftConditionProbabilities(int statLevel) => [1, statLevel >= 63 ? 0.25f : 0.2f, 0.04f];
     public static float[] EWRelicT1CraftConditionProbabilities() => [1, 0.03f, 0, 0, 0.12f, 0.12f, 0.12f, 0, 0, 0.12f];
@@ -79,6 +81,7 @@ public record class StepState
     public Skills PrevComboAction;
     public uint MaterialMiracleCharges;
     public bool MaterialMiracleActive;
+    public int ObserveCounter;
 
     public override string ToString() => $"#{Index} {Condition}: {Progress}/{Quality}/{Durability}/{RemainingCP}; {BuffsString()}; Prev={PrevComboAction}{(PrevActionFailed ? " (failed)" : "")}";
 

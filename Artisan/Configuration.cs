@@ -53,6 +53,7 @@ namespace Artisan
         public List<CraftingList> CraftingLists { get; set; } = new();
         public List<NewCraftingList> NewCraftingLists { get; set; } = new();
 
+        public bool ReplicateMacroDelay = false;
         public int AutoDelay = 0;
         public bool DelayRecommendation = false;
         public int RecommendationDelay = 0;
@@ -88,6 +89,15 @@ namespace Artisan
 
         public bool UseConsumablesTrial = false;
         public bool UseConsumablesQuickSynth = false;
+        public RecipeConfig DefaultConsumables = new(){
+            requiredFood = RecipeConfig.Disabled,
+            requiredPotion = RecipeConfig.Disabled,
+            requiredManual = RecipeConfig.Disabled,
+            requiredSquadronManual = RecipeConfig.Disabled,
+            requiredFoodHQ = false,
+            requiredPotionHQ = false
+        };
+
 
         public bool PlaySoundFinishEndurance = false;
         public bool PlaySoundFinishList = false;
@@ -154,6 +164,7 @@ namespace Artisan
         public string? DiscordWebhookUrl;
         public RaphaelSolverSettings RaphaelSolverConfig = new();
         public ConcurrentDictionary<string, MacroSolverSettings.Macro> RaphaelSolverCacheV2 = [];
+        public ConcurrentDictionary<string, MacroSolverSettings.Macro> RaphaelSolverCacheV3 = [];
 
         public void Save()
         {

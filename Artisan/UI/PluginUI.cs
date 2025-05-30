@@ -1,5 +1,6 @@
 ﻿using Artisan.Autocraft;
 using Artisan.CraftingLists;
+using Artisan.CraftingLogic;
 using Artisan.FCWorkshops;
 using Artisan.RawInformation;
 using Artisan.RawInformation.Character;
@@ -162,6 +163,11 @@ namespace Artisan.UI
                             OpenWindow = OpenWindow.RaphaelCache;
                         }
                         ImGui.Spacing();
+                        if (ImGui.Selectable("Recipe Assigner", OpenWindow == OpenWindow.Assigner))
+                        {
+                            OpenWindow = OpenWindow.Assigner;
+                        }
+                        ImGui.Spacing();
                         if (ImGui.Selectable("Crafting Lists", OpenWindow == OpenWindow.Lists))
                         {
                             OpenWindow = OpenWindow.Lists;
@@ -225,6 +231,9 @@ namespace Artisan.UI
                                 break;
                             case OpenWindow.RaphaelCache:
                                 RaphaelCacheUI.Draw();
+                                break;
+                            case OpenWindow.Assigner:
+                                AssignerUI.Draw();
                                 break;
                             case OpenWindow.FCWorkshop:
                                 FCWorkshopUI.Draw();
@@ -476,36 +485,23 @@ namespace Artisan.UI
                 ImGuiComponents.HelpMarker($"Automatically use each recommended action.");
                 if (autoEnabled)
                 {
-                    var delay = P.Config.AutoDelay;
-                    ImGui.PushItemWidth(200);
-                    if (ImGui.SliderInt("Execution Delay (ms)###ActionDelay", ref delay, 0, 1000))
+                    if (ImGui.Checkbox($"Replicate Macro Delay", ref P.Config.ReplicateMacroDelay))
                     {
-                        if (delay < 0) delay = 0;
-                        if (delay > 1000) delay = 1000;
-
-                        P.Config.AutoDelay = delay;
                         P.Config.Save();
                     }
-                }
 
-                if (ImGui.Checkbox("Delay Getting Recommendations", ref delayRec))
-                {
-                    P.Config.DelayRecommendation = delayRec;
-                    P.Config.Save();
-                }
-                ImGuiComponents.HelpMarker("Use this if you're having issues with Final Appraisal not triggering when it's supposed to.");
-
-                if (delayRec)
-                {
-                    var delay = P.Config.RecommendationDelay;
-                    ImGui.PushItemWidth(200);
-                    if (ImGui.SliderInt("Set Delay (ms)###RecommendationDelay", ref delay, 0, 1000))
+                    if (!P.Config.ReplicateMacroDelay)
                     {
-                        if (delay < 0) delay = 0;
-                        if (delay > 1000) delay = 1000;
+                        var delay = P.Config.AutoDelay;
+                        ImGui.PushItemWidth(200);
+                        if (ImGui.SliderInt("Execution Delay (ms)###ActionDelay", ref delay, 0, 1000))
+                        {
+                            if (delay < 0) delay = 0;
+                            if (delay > 1000) delay = 1000;
 
-                        P.Config.RecommendationDelay = delay;
-                        P.Config.Save();
+                            P.Config.AutoDelay = delay;
+                            P.Config.Save();
+                        }
                     }
                 }
 
@@ -526,6 +522,22 @@ namespace Artisan.UI
                 {
                     P.Config.Save();
                 }
+
+                ImGui.Indent();
+                if (ImGui.CollapsingHeader("Default Consumables"))
+                {
+                    bool changed = false;
+                    changed |= P.Config.DefaultConsumables.DrawFood();
+                    changed |= P.Config.DefaultConsumables.DrawPotion();
+                    changed |= P.Config.DefaultConsumables.DrawManual();
+                    changed |= P.Config.DefaultConsumables.DrawSquadronManual();
+
+                    if (changed)
+                    {
+                        P.Config.Save();
+                    }
+                }
+                ImGui.Unindent();
 
                 if (ImGui.Checkbox($"Prioritize NPC repairs above self-repairs", ref P.Config.PrioritizeRepairNPC))
                 {
@@ -986,5 +998,6 @@ namespace Artisan.UI
         Overview = 9,
         Simulator = 10,
         RaphaelCache = 11,
+        Assigner = 12,
     }
 }

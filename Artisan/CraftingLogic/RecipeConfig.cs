@@ -22,17 +22,40 @@ namespace Artisan.CraftingLogic;
 
 public class RecipeConfig
 {
+    public const uint Default = 0;
+    public const uint Disabled = 1;
+
+
     public string SolverType = ""; // TODO: ideally it should be a Type?, but that causes problems for serialization
     public int SolverFlavour;
-    public uint RequiredFood = 0;
-    public uint RequiredPotion = 0;
-    public uint RequiredManual = 0;
-    public uint RequiredSquadronManual = 0;
-    public bool RequiredFoodHQ = true;
-    public bool RequiredPotionHQ = true;
+    public uint requiredFood = Default;
+    public uint requiredPotion = Default;
+    public uint requiredManual = Default;
+    public uint requiredSquadronManual = Default;
+    public bool requiredFoodHQ = true;
+    public bool requiredPotionHQ = true;
 
-    [NonSerialized]
-    public Dictionary<string, RaphaelSolutionConfig> TempConfigs = new();
+
+    public bool FoodEnabled => RequiredFood != Disabled;
+    public bool PotionEnabled => RequiredPotion != Disabled;
+    public bool ManualEnabled => RequiredManual != Disabled;
+    public bool SquadronManualEnabled => RequiredSquadronManual != Disabled;
+
+
+    public uint RequiredFood => requiredFood == Default ? P.Config.DefaultConsumables.requiredFood : requiredFood;
+    public uint RequiredPotion => requiredPotion == Default ? P.Config.DefaultConsumables.requiredPotion : requiredPotion;
+    public uint RequiredManual => requiredManual == Default ? P.Config.DefaultConsumables.requiredManual : requiredManual;
+    public uint RequiredSquadronManual => requiredSquadronManual == Default ? P.Config.DefaultConsumables.requiredSquadronManual : requiredSquadronManual;
+    public bool RequiredFoodHQ => requiredFood == Default ? P.Config.DefaultConsumables.requiredFoodHQ : requiredFoodHQ;
+    public bool RequiredPotionHQ => requiredPotion == Default ? P.Config.DefaultConsumables.requiredPotionHQ : requiredPotionHQ;
+
+
+    public string FoodName => requiredFood == Default ? $"{P.Config.DefaultConsumables.FoodName} (Default)" : RequiredFood == Disabled ? "Disabled" : $"{(RequiredFoodHQ ? " " : "")}{ConsumableChecker.Food.FirstOrDefault(x => x.Id == RequiredFood).Name}";
+    public string PotionName => requiredPotion == Default ? $"{P.Config.DefaultConsumables.PotionName} (Default)" : RequiredPotion == Disabled ? "Disabled" : $"{(RequiredPotionHQ ? " " : "")}{ConsumableChecker.Pots.FirstOrDefault(x => x.Id == RequiredPotion).Name}";
+    public string ManualName => requiredManual == Default ? $"{P.Config.DefaultConsumables.ManualName} (Default)" : RequiredManual == Disabled ? "Disabled" : $"{ConsumableChecker.Manuals.FirstOrDefault(x => x.Id == RequiredManual).Name}";
+    public string SquadronManualName => requiredSquadronManual == Default ? $"{P.Config.DefaultConsumables.SquadronManualName} (Default)" : RequiredSquadronManual == Disabled ? "Disabled" : $"{ConsumableChecker.SquadronManuals.FirstOrDefault(x => x.Id == RequiredSquadronManual).Name}";
+
+
 
     public bool Draw(uint recipeId)
     {
@@ -42,6 +65,7 @@ public class RecipeConfig
         var stats = CharacterStats.GetBaseStatsForClassHeuristic(Job.CRP + recipe.CraftType.RowId);
         stats.AddConsumables(new(config.RequiredFood, config.RequiredFoodHQ), new(config.RequiredPotion, config.RequiredPotionHQ), CharacterInfo.FCCraftsmanshipbuff);
         var craft = Crafting.BuildCraftStateForRecipe(stats, Job.CRP + recipe.CraftType.RowId, recipe);
+        craft.InitialQuality = Simulator.GetStartingQuality(recipe, false, craft.StatLevel);
         bool changed = false;
         changed |= DrawFood();
         changed |= DrawPotion();
@@ -58,20 +82,29 @@ public class RecipeConfig
         ImGuiEx.TextV("Food Usage:");
         ImGui.SameLine(130f.Scale());
         if (hasButton) ImGuiEx.SetNextItemFullWidth(-120);
-        if (ImGui.BeginCombo("##foodBuff", RequiredFood == 0 ? "Disabled" : $"{(RequiredFoodHQ ? " " : "")}{ConsumableChecker.Food.FirstOrDefault(x => x.Id == RequiredFood).Name}"))
+        if (ImGui.BeginCombo("##foodBuff", FoodName))
         {
+            if (this != P.Config.DefaultConsumables)
+            {
+                if (ImGui.Selectable($"Default ({P.Config.DefaultConsumables.FoodName})"))
+                {
+                    requiredFood = Default;
+                    requiredFoodHQ = false;
+                    changed = true;
+                }
+            }
             if (ImGui.Selectable("Disable"))
             {
-                RequiredFood = 0;
-                RequiredFoodHQ = false;
+                requiredFood = Disabled;
+                requiredFoodHQ = false;
                 changed = true;
             }
             foreach (var x in ConsumableChecker.GetFood(true))
             {
                 if (ImGui.Selectable($"{x.Name}"))
                 {
-                    RequiredFood = x.Id;
-                    RequiredFoodHQ = false;
+                    requiredFood = x.Id;
+                    requiredFoodHQ = false;
                     changed = true;
                 }
             }
@@ -79,8 +112,8 @@ public class RecipeConfig
             {
                 if (ImGui.Selectable($" {x.Name}"))
                 {
-                    RequiredFood = x.Id;
-                    RequiredFoodHQ = true;
+                    requiredFood = x.Id;
+                    requiredFoodHQ = true;
                     changed = true;
                 }
             }
@@ -95,20 +128,29 @@ public class RecipeConfig
         ImGuiEx.TextV("Medicine Usage:");
         ImGui.SameLine(130f.Scale());
         if (hasButton) ImGuiEx.SetNextItemFullWidth(-120);
-        if (ImGui.BeginCombo("##potBuff", RequiredPotion == 0 ? "Disabled" : $"{(RequiredPotionHQ ? " " : "")}{ConsumableChecker.Pots.FirstOrDefault(x => x.Id == RequiredPotion).Name}"))
+        if (ImGui.BeginCombo("##potBuff", PotionName))
         {
+            if (this != P.Config.DefaultConsumables)
+            {
+                if (ImGui.Selectable($"Default ({P.Config.DefaultConsumables.PotionName})"))
+                {
+                    requiredPotion = Default;
+                    requiredPotionHQ = false;
+                    changed = true;
+                }
+            }
             if (ImGui.Selectable("Disable"))
             {
-                RequiredPotion = 0;
-                RequiredPotionHQ = false;
+                requiredPotion = Disabled;
+                requiredPotionHQ = false;
                 changed = true;
             }
             foreach (var x in ConsumableChecker.GetPots(true))
             {
                 if (ImGui.Selectable($"{x.Name}"))
                 {
-                    RequiredPotion = x.Id;
-                    RequiredPotionHQ = false;
+                    requiredPotion = x.Id;
+                    requiredPotionHQ = false;
                     changed = true;
                 }
             }
@@ -116,8 +158,8 @@ public class RecipeConfig
             {
                 if (ImGui.Selectable($" {x.Name}"))
                 {
-                    RequiredPotion = x.Id;
-                    RequiredPotionHQ = true;
+                    requiredPotion = x.Id;
+                    requiredPotionHQ = true;
                     changed = true;
                 }
             }
@@ -132,18 +174,26 @@ public class RecipeConfig
         ImGuiEx.TextV("Manual Usage:");
         ImGui.SameLine(130f.Scale());
         if (hasButton) ImGuiEx.SetNextItemFullWidth(-120);
-        if (ImGui.BeginCombo("##manualBuff", RequiredManual == 0 ? "Disabled" : $"{ConsumableChecker.Manuals.FirstOrDefault(x => x.Id == RequiredManual).Name}"))
+        if (ImGui.BeginCombo("##manualBuff", ManualName))
         {
+            if (this != P.Config.DefaultConsumables)
+            {
+                if (ImGui.Selectable($"Default ({P.Config.DefaultConsumables.ManualName})"))
+                {
+                    requiredManual = Default;
+                    changed = true;
+                }
+            }
             if (ImGui.Selectable("Disable"))
             {
-                RequiredManual = 0;
+                requiredManual = Disabled;
                 changed = true;
             }
             foreach (var x in ConsumableChecker.GetManuals(true))
             {
                 if (ImGui.Selectable($"{x.Name}"))
                 {
-                    RequiredManual = x.Id;
+                    requiredManual = x.Id;
                     changed = true;
                 }
             }
@@ -151,6 +201,8 @@ public class RecipeConfig
         }
         return changed;
     }
+
+
 
     public bool DrawSquadronManual(bool hasButton = false)
     {
@@ -158,18 +210,26 @@ public class RecipeConfig
         ImGuiEx.TextV("Squadron Manual:");
         ImGui.SameLine(130f.Scale());
         if (hasButton) ImGuiEx.SetNextItemFullWidth(-120);
-        if (ImGui.BeginCombo("##squadronManualBuff", RequiredSquadronManual == 0 ? "Disabled" : $"{ConsumableChecker.SquadronManuals.FirstOrDefault(x => x.Id == RequiredSquadronManual).Name}"))
+        if (ImGui.BeginCombo("##squadronManualBuff", SquadronManualName))
         {
+            if (this != P.Config.DefaultConsumables)
+            {
+                if (ImGui.Selectable($"Default ({P.Config.DefaultConsumables.SquadronManualName})"))
+                {
+                    requiredSquadronManual = Default;
+                    changed = true;
+                }
+            }
             if (ImGui.Selectable("Disable"))
             {
-                RequiredSquadronManual = 0;
+                requiredSquadronManual = Disabled;
                 changed = true;
             }
             foreach (var x in ConsumableChecker.GetSquadronManuals(true))
             {
                 if (ImGui.Selectable($"{x.Name}"))
                 {
-                    RequiredSquadronManual = x.Id;
+                    requiredSquadronManual = x.Id;
                     changed = true;
                 }
             }
@@ -178,7 +238,7 @@ public class RecipeConfig
         return changed;
     }
 
-    public bool DrawSolver(CraftState craft, bool hasButton = false)
+    public bool DrawSolver(CraftState craft, bool hasButton = false, bool liveStats = true)
     {
         bool changed = false;
         ImGuiEx.TextV($"Solver:");
@@ -209,108 +269,7 @@ public class RecipeConfig
             ImGui.EndCombo();
         }
 
-        if (RaphaelCache.CLIExists())
-        {
-            var hasSolution = RaphaelCache.HasSolution(craft, out var solution);
-            var key = RaphaelCache.GetKey(craft);
-
-            if (!TempConfigs.ContainsKey(key))
-            {
-                TempConfigs.Add(key, new());
-                TempConfigs[key].HQConsiderations = P.Config.RaphaelSolverConfig.AllowHQConsiderations;
-                TempConfigs[key].EnsureReliability = P.Config.RaphaelSolverConfig.AllowEnsureReliability;
-                TempConfigs[key].BackloadProgress = P.Config.RaphaelSolverConfig.AllowBackloadProgress;
-                TempConfigs[key].HeartAndSoul = P.Config.RaphaelSolverConfig.ShowSpecialistSettings && craft.Specialist;
-                TempConfigs[key].QuickInno = P.Config.RaphaelSolverConfig.ShowSpecialistSettings && craft.Specialist;
-            }
-
-            if (hasSolution)
-            {
-                var opt = CraftingProcessor.GetAvailableSolversForRecipe(craft, true).FirstOrNull(x => x.Name == $"Raphael Recipe Solver");
-                var solverIsRaph = SolverType == opt?.Def.GetType().FullName!;
-                var curStats = CharacterStats.GetCurrentStats();
-                //Svc.Log.Debug($"{curStats.Craftsmanship}/{craft.StatCraftsmanship} - {curStats.Control}/{craft.StatControl} - {curStats.CP}/{craft.StatCP}");
-                if (craft.StatCraftsmanship != curStats.Craftsmanship && solverIsRaph)
-                {
-                    var craftsmanshipError = curStats.Craftsmanship - craft.StatCraftsmanship > 0 ? $"(Excess of {curStats.Craftsmanship - craft.StatCraftsmanship}) " : "";
-                    ImGuiEx.Text(ImGuiColors.DalamudRed, $"Your current Craftsmanship {craftsmanshipError}does not match the generated result.\nThis solver won't be used until they match due to possible early finishes.\n(You may just need to have the correct buffs applied)");
-                }
-
-                if (!solverIsRaph)
-                {
-                    ImGuiEx.TextCentered($"Raphael Solution Has Been Generated. (Click to Switch)");
-                    if (ImGui.IsItemClicked())
-                    {
-                        SolverType = opt?.Def.GetType().FullName!;
-                        SolverFlavour = (int)(opt?.Flavour);
-                        changed = true;
-                    }
-                }
-            }
-            else
-            {
-                if (P.Config.RaphaelSolverConfig.AutoGenerate && CraftingProcessor.GetAvailableSolversForRecipe(craft, true).Any())
-                {
-                    RaphaelCache.Build(craft, TempConfigs[key]);
-                }
-            }
-
-            ImGui.Separator();
-            var inProgress = RaphaelCache.InProgress(craft);
-            var raphChanges = false;
-
-            if (inProgress)
-                ImGui.BeginDisabled();
-
-            if (P.Config.RaphaelSolverConfig.AllowHQConsiderations)
-                raphChanges |= ImGui.Checkbox($"Allow Quality Considerations##{key}Quality", ref TempConfigs[key].HQConsiderations);
-            if (P.Config.RaphaelSolverConfig.AllowEnsureReliability)
-                raphChanges |= ImGui.Checkbox($"Ensure reliability##{key}Reliability", ref TempConfigs[key].EnsureReliability);
-            if (P.Config.RaphaelSolverConfig.AllowBackloadProgress)
-                raphChanges |= ImGui.Checkbox($"Backload progress##{key}Progress", ref TempConfigs[key].BackloadProgress);
-            if (P.Config.RaphaelSolverConfig.ShowSpecialistSettings && craft.Specialist)
-                raphChanges |= ImGui.Checkbox($"Allow heart and soul usage##{key}HS", ref TempConfigs[key].HeartAndSoul);
-            if (P.Config.RaphaelSolverConfig.ShowSpecialistSettings && craft.Specialist)
-                raphChanges |= ImGui.Checkbox($"Allow quick innovation usage##{key}QI", ref TempConfigs[key].QuickInno);
-
-            changed |= raphChanges;
-
-            if (inProgress)
-                ImGui.EndDisabled();
-
-            if (!inProgress)
-            {
-                if (ImGui.Button("Build Raphael Solution", new Vector2(ImGui.GetContentRegionAvail().X, 25f.Scale())))
-                {
-                    RaphaelCache.Build(craft, TempConfigs[key]);
-                }
-            }
-            else
-            {
-                if (ImGui.Button("Cancel Raphael Generation", new Vector2(ImGui.GetContentRegionAvail().X, 25f.Scale())))
-                {
-                    RaphaelCache.Tasks.TryRemove(key, out var task);
-                    task.Item1.Cancel();
-                }
-            }
-
-            if (TempConfigs[key].EnsureReliability && ImGui.IsItemHovered())
-            {
-                ImGui.BeginTooltip();
-                ImGui.Text("Ensuring quality is enabled, no support shall be provided when its enabled\nDue to problems that can be caused.");
-                ImGui.EndTooltip();
-            }
-
-            if(TempConfigs[key].HeartAndSoul || TempConfigs[key].QuickInno)
-            {
-                ImGui.Text("Specialist actions are enabled, this can slow down the solver a lot.");
-            }
-
-            if (inProgress)
-            {
-                ImGuiEx.TextCentered("Generating...");
-            }
-        }
+        changed |= RaphaelCache.DrawRaphaelDropdown(craft, liveStats);
 
         return changed;
     }
@@ -340,14 +299,14 @@ public class RecipeConfig
                 P.PluginUi.IsOpen = true;
                 SimulatorUI.SelectedRecipe = recipe;
                 SimulatorUI.ResetSim();
-                if (config.RequiredPotion > 0)
+                if (config.PotionEnabled)
                 {
                     SimulatorUI.SimMedicine ??= new();
                     SimulatorUI.SimMedicine.Id = config.RequiredPotion;
                     SimulatorUI.SimMedicine.ConsumableHQ = config.RequiredPotionHQ;
                     SimulatorUI.SimMedicine.Stats = new ConsumableStats(config.RequiredPotion, config.RequiredPotionHQ);
                 }
-                if (config.RequiredFood > 0)
+                if (config.FoodEnabled)
                 {
                     SimulatorUI.SimFood ??= new();
                     SimulatorUI.SimFood.Id = config.RequiredFood;
@@ -380,12 +339,5 @@ public class RecipeConfig
 
 
         }
-    }
-
-    private void CleanRaphaelMacro(string key)
-    {
-        Svc.Log.Debug("Clearing macro due to settings changes");
-        TempConfigs[key].Macro = ""; // clear macro if settings have changed
-        TempConfigs[key].HasChanges = true;
     }
 }

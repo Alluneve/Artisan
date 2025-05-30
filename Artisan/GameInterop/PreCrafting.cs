@@ -133,7 +133,7 @@ public unsafe static class PreCrafting
             Svc.Log.Debug($"Starting {type} crafting: {recipe.RowId} '{recipe.ItemResult.Value.Name.ToDalamudString()}'");
 
             var requiredClass = Job.CRP + recipe.CraftType.RowId;
-            var config = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId);
+            var config = P.Config.RecipeConfigs.GetValueOrDefault(recipe.RowId) ?? new();
 
             bool hasIngredients = GetNumberCraftable(recipe) > 0;
             bool needClassChange = requiredClass != CharacterInfo.JobID;
@@ -231,16 +231,16 @@ public unsafe static class PreCrafting
     {
         List<string> missingConsumables = new List<string>();
         if (!ConsumableChecker.HasItem(config.RequiredFood, config.RequiredFoodHQ) && !ConsumableChecker.IsFooded(config))
-            missingConsumables.Add($"{(config.RequiredFoodHQ ? " " : "")}{config.RequiredFood.NameOfItem()}");
+            missingConsumables.Add(config.FoodName);
 
         if (!ConsumableChecker.HasItem(config.RequiredPotion, config.RequiredPotionHQ) && !ConsumableChecker.IsPotted(config))
-            missingConsumables.Add($"{(config.RequiredPotionHQ ? " " : "")}{config.RequiredPotion.NameOfItem()}");
+            missingConsumables.Add(config.PotionName);
 
         if (!ConsumableChecker.HasItem(config.RequiredManual, false) && !ConsumableChecker.IsManualled(config))
-            missingConsumables.Add(config.RequiredManual.NameOfItem());
+            missingConsumables.Add(config.ManualName);
 
         if (!ConsumableChecker.HasItem(config.RequiredSquadronManual, false) && !ConsumableChecker.IsSquadronManualled(config))
-            missingConsumables.Add(config.RequiredSquadronManual.NameOfItem());
+            missingConsumables.Add(config.SquadronManualName);
         return missingConsumables;
     }
 
@@ -482,20 +482,18 @@ public unsafe static class PreCrafting
     public static TaskResult TaskSelectRecipe(Recipe recipe)
     {
         var re = Operations.GetSelectedRecipeEntry();
-        if (re != null && re->RecipeId == recipe.RowId)
+        if ((re != null && re->RecipeId == recipe.RowId) || (Crafting.CurState is not Crafting.State.IdleBetween and not Crafting.State.IdleNormal))
             return TaskResult.Done;
 
         if (recipe.Number == 0)
         {
             var addon = Crafting.GetCosmicAddon();
+
             if (addon == null)
             {
                 AgentRecipeNote.Instance()->OpenRecipeByRecipeId(recipe.RowId);
-                addon = Crafting.GetCosmicAddon();
-            }
-
-            if (addon == null)
                 return TaskResult.Retry;
+            }
 
             var rd = RecipeNoteRecipeData.Ptr();
             if (rd == null)
